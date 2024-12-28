@@ -23,8 +23,8 @@ To run this project, you need the following:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/auto-typer.git
-   cd auto-typer
+   git clone https://github.com/4LPH7/Auto_Typer.git
+   cd Auto_Typer
    ```
 
 2. Install the required Python packages:
@@ -45,9 +45,6 @@ To run this project, you need the following:
 4. **Start Typing**: Press the hotkey or click the "Start Typing" button to begin.
 5. **Stop Typing**: Press `ESC` or click the "Stop Typing" button to halt typing.
 
-## Screenshots
-
-_Add screenshots of the application in both light and dark modes to showcase its design._
 
 ## Contribution
 Contributions are welcome! Feel free to fork the repository and submit a pull request.
