@@ -6,6 +6,7 @@ from pynput import keyboard
 from tkinter import messagebox
 
 
+
 # Global variables
 stop_typing_flag = False
 typing_thread = None
@@ -43,7 +44,11 @@ def auto_type(text, speed_ms, delay_ms):
     for char in text:
         if stop_typing_flag:
             break
-        pyautogui.write(char)
+        # Handle special characters
+        if char in ["<", ">", "{", "}"]:
+            pyautogui.typewrite(char)  # Explicitly type special characters
+        else:
+            pyautogui.write(char)  # Normal typing
         time.sleep(speed_ms / 1000.0)  # Convert ms to seconds
     time.sleep(delay_ms / 1000.0)
 
