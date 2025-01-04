@@ -47,10 +47,18 @@ To run this project, you need the following:
 
 
 ## Contribution
-Contributions are welcome! Feel free to fork the repository and submit a pull request.
+- Contributions are welcome! Feel free to fork the repository and submit a pull request.
 
 ## License
-This project is licensed under the [MIT License](LICENSE).
+- This project is licensed under the [MIT License](LICENSE).
 
 ## Disclaimer
-Use this tool responsibly and avoid using it for malicious purposes.
+ - Use this tool responsibly and avoid using it for malicious purposes.
+
+
+### Show your support
+
+Give a ⭐ if you like this website!
+
+<a href="https://buymeacoffee.com/arulartadg" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-violet.png" alt="Buy Me A Coffee" height= "60px" width= "217px" ></a>
+
