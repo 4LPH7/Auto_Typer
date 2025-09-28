@@ -5,234 +5,200 @@ import time
 from pynput import keyboard
 from tkinter import messagebox
 
+class AutoTyperApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
+        # Initialize variables
+        self.stop_typing_flag = False
+        self.typing_thread = None
+        self.current_hotkey = set()
+        self.pressed_keys = set()
+        self.registering_hotkey = False
+        self.thread_lock = threading.Lock()
+        self.time_lock = threading.Lock()
+        self.dark_mode = True
+        self.typing_start_time = None
+        self.typing_total_time = 0
 
-# Global variables
-stop_typing_flag = False
-typing_thread = None
-current_hotkey = set()
-pressed_keys = set()
-registering_hotkey = False
-thread_lock = threading.Lock()  # Lock for managing thread safety
-dark_mode = True  # Default appearance mode
-typing_start_time = None  # Timer start time
-typing_total_time = 0  # Total elapsed time
+        # Configure appearance
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
 
-# Parse special keys
-def parse_special_keys(text):
-    text = text.replace("{Enter}", "\n")
-    text = text.replace("{Tab}", "\t")
-    return text
+        # Configure window
+        self.title("Modern Auto Typer")
+        self.geometry("600x700")
+        self.caps_mode_var = ctk.StringVar(value="as_is")
 
-# Apply caps mode
-def apply_caps_mode(text, mode):
-    if mode == "uppercase":
-        return text.upper()
-    elif mode == "lowercase":
-        return text.lower()
-    elif mode == "sentence_case":
-        return text.capitalize()
-    return text  # Default: as_is
+        # Create widgets
+        self.create_widgets()
 
-# Auto typing function
-def auto_type(text, speed_ms, delay_ms):
-    global stop_typing_flag, typing_thread, typing_start_time, typing_total_time
+        # Setup key listener
+        self.setup_key_listener()
 
-    text = parse_special_keys(apply_caps_mode(text, caps_mode_var.get()))
-    typing_start_time = time.time()  # Start the timer
+    def create_widgets(self):
+        # Title
+        title_label = ctk.CTkLabel(self, text="Auto Typer", font=("Arial", 24, "bold"))
+        title_label.pack(pady=10)
 
-    for char in text:
-        if stop_typing_flag:
-            break
-        # Handle special characters
-        if char in ["<", ">", "{", "}"]:
-            pyautogui.typewrite(char)  # Explicitly type special characters
+        # Text input
+        self.text_input = ctk.CTkTextbox(self, width=500, height=150, font=("Arial", 14))
+        self.text_input.pack(pady=10)
+
+        # Timer label
+        self.timer_label = ctk.CTkLabel(self, text="Total Typing Time: 0.00 seconds", font=("Arial", 14))
+        self.timer_label.pack(pady=5)
+
+        # Speed and delay
+        self.speed_entry = ctk.CTkEntry(self, placeholder_text="Typing Speed (ms/char)", width=200)
+        self.speed_entry.pack(pady=5)
+        self.delay_entry = ctk.CTkEntry(self, placeholder_text="Delay Between Words (ms)", width=200)
+        self.delay_entry.pack(pady=5)
+
+        # Hotkey display and registration
+        self.hotkey_display = ctk.CTkLabel(self, text="Hotkey: Not Set", font=("Arial", 14))
+        self.hotkey_display.pack(pady=5)
+        register_button = ctk.CTkButton(self, text="Register Hotkey", command=self.register_hotkey)
+        register_button.pack(pady=10)
+
+        # Caps mode radio buttons
+        caps_frame = ctk.CTkFrame(self)
+        caps_frame.pack(pady=10, fill="x")
+        caps_label = ctk.CTkLabel(caps_frame, text="Caps Lock Mode:", font=("Arial", 14))
+        caps_label.grid(row=0, column=0, padx=5)
+
+        caps_as_is = ctk.CTkRadioButton(caps_frame, text="Type As It Is", value="as_is", variable=self.caps_mode_var)
+        caps_as_is.grid(row=0, column=1, padx=5)
+        caps_upper = ctk.CTkRadioButton(caps_frame, text="Type All Capital", value="uppercase", variable=self.caps_mode_var)
+        caps_upper.grid(row=0, column=2, padx=5)
+        caps_sentence = ctk.CTkRadioButton(caps_frame, text="Sentence Case", value="sentence_case", variable=self.caps_mode_var)
+        caps_sentence.grid(row=0, column=3, padx=5)
+        caps_lower = ctk.CTkRadioButton(caps_frame, text="Lower Case", value="lowercase", variable=self.caps_mode_var)
+        caps_lower.grid(row=0, column=4, padx=5)
+        caps_as_is.select()
+
+        # Start and stop buttons
+        start_button = ctk.CTkButton(self, text="Start Typing", command=self.start_typing, fg_color="green")
+        start_button.pack(pady=10)
+        stop_button = ctk.CTkButton(self, text="Stop Typing", command=self.stop_typing, fg_color="red")
+        stop_button.pack(pady=10)
+
+        # Dark/light mode button
+        self.mode_button = ctk.CTkButton(self, text="Switch to Light Mode", command=self.toggle_mode)
+        self.mode_button.pack(pady=10)
+
+    def parse_special_keys(self, text):
+        return text.replace("{Enter}", "\n").replace("{Tab}", "\t")
+
+    def apply_caps_mode(self, text, mode):
+        if mode == "uppercase":
+            return text.upper()
+        elif mode == "lowercase":
+            return text.lower()
+        elif mode == "sentence_case":
+            return text.capitalize()
+        return text
+
+    def auto_type(self, text, speed_ms, delay_ms):
+        text = self.parse_special_keys(self.apply_caps_mode(text, self.caps_mode_var.get()))
+
+        with self.time_lock:
+            self.typing_start_time = time.time()
+            self.typing_total_time = 0  # Reset total time
+
+        for char in text:
+            if self.stop_typing_flag:
+                break
+            pyautogui.write(char)
+            time.sleep(speed_ms / 1000.0)
+
+        if not self.stop_typing_flag:
+            time.sleep(delay_ms / 1000.0)
+
+        with self.time_lock:
+            if self.typing_start_time:
+                self.typing_total_time = time.time() - self.typing_start_time
+            self.typing_start_time = None
+
+        with self.thread_lock:
+            self.typing_thread = None
+
+        if not self.stop_typing_flag:
+            self.after(0, self.show_completion_message)
+
+    def start_typing(self):
+        with self.thread_lock:
+            if self.typing_thread is not None:
+                return
+
+            self.stop_typing_flag = False
+            text = self.text_input.get("1.0", "end").strip()
+            try:
+                speed_ms = int(self.speed_entry.get())
+                delay_ms = int(self.delay_entry.get())
+            except ValueError:
+                return
+            if not text:
+                return
+
+            self.typing_thread = threading.Thread(target=self.auto_type, args=(text, speed_ms, delay_ms), daemon=True)
+            self.typing_thread.start()
+            self.update_timer()
+
+    def stop_typing(self):
+        self.stop_typing_flag = True
+        with self.thread_lock:
+            if self.typing_thread is not None:
+                self.typing_thread.join(timeout=1)
+                self.typing_thread = None
+
+    def show_completion_message(self):
+        messagebox.showinfo("Typing Complete", f"Typing session completed successfully.\nElapsed Time: {self.typing_total_time:.2f} seconds")
+
+    def update_timer(self):
+        if self.typing_start_time:
+            elapsed = time.time() - self.typing_start_time + self.typing_total_time
+            self.timer_label.configure(text=f"Total Typing Time: {elapsed:.2f} seconds")
+            self.after(100, self.update_timer)  # Continue updating
         else:
-            pyautogui.write(char)  # Normal typing
-        time.sleep(speed_ms / 1000.0)  # Convert ms to seconds
-    time.sleep(delay_ms / 1000.0)
+            self.timer_label.configure(text=f"Total Typing Time: {self.typing_total_time:.2f} seconds")
 
-    typing_total_time = time.time() - typing_start_time  # Calculate elapsed time
-    typing_start_time = None
+    def register_hotkey(self):
+        self.registering_hotkey = True
+        self.current_hotkey.clear()
+        self.hotkey_display.configure(text="Press keys for hotkey...")
 
-    with thread_lock:
-        typing_thread = None  # Clear the thread reference when typing is done
-
-    # Show popup with elapsed time
-    messagebox.showinfo("Typing Complete", f"Typing session completed successfully.\nElapsed Time: {typing_total_time:.2f} seconds")
-
-
-# Start typing
-def start_typing():
-    global stop_typing_flag, typing_thread
-
-    with thread_lock:
-        if typing_thread is not None:
+    def on_press(self, key):
+        if self.registering_hotkey:
+            self.current_hotkey.add(key)
+            self.hotkey_display.configure(text=f"Hotkey Registered: {self.hotkey_to_string(self.current_hotkey)}")
+            self.registering_hotkey = False
             return
 
-        stop_typing_flag = False
-        text = text_input.get("1.0", "end").strip()
-        try:
-            speed_ms = int(speed_entry.get())
-            delay_ms = int(delay_entry.get())
-        except ValueError:
-            return
-        if not text:
-            return
+        self.pressed_keys.add(key)
+        if self.pressed_keys == self.current_hotkey:
+            self.start_typing()
 
-        typing_thread = threading.Thread(target=auto_type, args=(text, speed_ms, delay_ms), daemon=True)
-        typing_thread.start()
+    def on_release(self, key):
+        if key in self.pressed_keys:
+            self.pressed_keys.remove(key)
+        if key == keyboard.Key.esc:
+            self.stop_typing()
 
-# Stop typing
-def stop_typing():
-    global stop_typing_flag, typing_thread, typing_start_time, typing_total_time
+    def hotkey_to_string(self, hotkey):
+        return "+".join([str(k).replace("Key.", "").capitalize() for k in hotkey])
 
-    stop_typing_flag = True
-    with thread_lock:
-        if typing_thread is not None:
-            typing_thread.join(timeout=1)  # Wait for the thread to terminate
-            typing_thread = None
+    def setup_key_listener(self):
+        listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
+        listener.daemon = True
+        listener.start()
 
-    # Reset the timer if typing is stopped
-    typing_total_time += time.time() - typing_start_time if typing_start_time else 0
-    typing_start_time = None
+    def toggle_mode(self):
+        self.dark_mode = not self.dark_mode
+        mode = "dark" if self.dark_mode else "light"
+        ctk.set_appearance_mode(mode)
+        self.mode_button.configure(text=f"Switch to {'Light' if self.dark_mode else 'Dark'} Mode")
 
-# Update timer display
-def update_timer():
-    global typing_start_time, typing_total_time
-    if typing_start_time:
-        elapsed = time.time() - typing_start_time + typing_total_time
-        timer_label.configure(text=f"Total Typing Time: {elapsed:.2f} seconds")
-    else:
-        timer_label.configure(text=f"Total Typing Time: {typing_total_time:.2f} seconds")
-    app.after(100, update_timer)
-
-# Register a hotkey
-def register_hotkey():
-    global registering_hotkey, current_hotkey
-    registering_hotkey = True
-    current_hotkey.clear()
-    hotkey_display.configure(text="Press keys for hotkey...")
-
-# Handle key press
-def on_press(key):
-    global pressed_keys, registering_hotkey, current_hotkey
-
-    if registering_hotkey:
-        current_hotkey.add(key)
-        hotkey_display.configure(text=f"Hotkey Registered: {hotkey_to_string(current_hotkey)}")
-        registering_hotkey = False
-        return
-
-    pressed_keys.add(key)
-    if pressed_keys == current_hotkey:
-        start_typing()
-
-# Handle key release
-def on_release(key):
-    global stop_typing_flag
-
-    if key in pressed_keys:
-        pressed_keys.remove(key)
-
-    # Stop typing when ESC is released
-    if key == keyboard.Key.esc:
-        stop_typing()
-
-# Convert hotkey to string
-def hotkey_to_string(hotkey):
-    return "+".join([str(k).replace("Key.", "").capitalize() for k in hotkey])
-
-# Setup key listener
-def setup_key_listener():
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    listener.daemon = True
-    listener.start()
-
-# Toggle dark/light mode
-def toggle_mode():
-    global dark_mode
-    dark_mode = not dark_mode
-    mode = "dark" if dark_mode else "light"
-    ctk.set_appearance_mode(mode)
-    mode_button.configure(text=f"Switch to {'Light' if dark_mode else 'Dark'} Mode")
-
-# GUI setup
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
-
-app = ctk.CTk()
-caps_mode_var = ctk.StringVar(value="as_is")  # Default caps mode after root window initialization
-
-app.title("Modern Auto Typer")
-app.geometry("600x700")
-
-# Title
-title_label = ctk.CTkLabel(app, text="Auto Typer", font=("Arial", 24, "bold"))
-title_label.pack(pady=10)
-
-# Text input
-text_input = ctk.CTkTextbox(app, width=500, height=150, font=("Arial", 14))
-text_input.pack(pady=10)
-
-# Timer label
-timer_label = ctk.CTkLabel(app, text="Total Typing Time: 0.00 seconds", font=("Arial", 14))
-timer_label.pack(pady=5)
-
-# Speed and delay
-speed_entry = ctk.CTkEntry(app, placeholder_text="Typing Speed (ms/char)", width=200)
-speed_entry.pack(pady=5)
-delay_entry = ctk.CTkEntry(app, placeholder_text="Delay Between Words (ms)", width=200)
-delay_entry.pack(pady=5)
-
-# Hotkey display and registration
-hotkey_display = ctk.CTkLabel(app, text="Hotkey: Not Set", font=("Arial", 14))
-hotkey_display.pack(pady=5)
-register_button = ctk.CTkButton(app, text="Register Hotkey", command=register_hotkey)
-register_button.pack(pady=10)
-
-# Caps mode radio buttons (horizontally aligned)
-caps_frame = ctk.CTkFrame(app)
-caps_frame.pack(pady=10, fill="x")
-caps_label = ctk.CTkLabel(caps_frame, text="Caps Lock Mode:", font=("Arial", 14))
-caps_label.grid(row=0, column=0, padx=5)
-
-caps_as_is = ctk.CTkRadioButton(
-    caps_frame, text="Type As It Is", value="as_is", variable=caps_mode_var
-)
-caps_as_is.grid(row=0, column=1, padx=5)
-
-caps_upper = ctk.CTkRadioButton(
-    caps_frame, text="Type All Capital", value="uppercase", variable=caps_mode_var
-)
-caps_upper.grid(row=0, column=2, padx=5)
-
-caps_sentence = ctk.CTkRadioButton(
-    caps_frame, text="Sentence Case", value="sentence_case", variable=caps_mode_var
-)
-caps_sentence.grid(row=0, column=3, padx=5)
-
-caps_lower = ctk.CTkRadioButton(
-    caps_frame, text="Lower Case", value="lowercase", variable=caps_mode_var
-)
-caps_lower.grid(row=0, column=4, padx=5)
-
-# Ensure default selection
-caps_as_is.select()
-
-# Start and stop buttons
-start_button = ctk.CTkButton(app, text="Start Typing", command=start_typing, fg_color="green")
-start_button.pack(pady=10)
-stop_button = ctk.CTkButton(app, text="Stop Typing", command=stop_typing, fg_color="red")
-stop_button.pack(pady=10)
-
-# Dark/light mode button
-mode_button = ctk.CTkButton(app, text="Switch to Light Mode", command=toggle_mode)
-mode_button.pack(pady=10)
-
-# Update timer
-update_timer()
-
-# Setup key listener
-setup_key_listener()
-app.mainloop()
+if __name__ == "__main__":
+    app = AutoTyperApp()
+    app.mainloop()
