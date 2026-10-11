@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-typer"
+version = "2.0.0"
+description = "A modern and customizable auto-typing application with hotkeys, loops, and human-like typing modes."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "4LPH7" }]
+requires-python = ">=3.15"
+keywords = ["auto-typer", "automation", "typing", "customtkinter"]
+classifiers = [
+    "Programming Language :: Python :: 3.15",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Desktop Environment",
+]
+dependencies = [
+    "customtkinter>=5.2.2",
+    "pynput>=1.8.1",
+    "pyautogui>=0.9.54",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pyinstaller>=6.0",
+]
+
+[project.urls]
+Repository = "https://github.com/4LPH7/Auto_Typer"
+
+[project.scripts]
+auto-typer = "auto_typer.app:main"
+
+[tool.setuptools]
+packages = ["auto_typer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
