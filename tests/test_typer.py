@@ -86,6 +86,22 @@ class TestTyping:
                                                         start_countdown_s=0))
         assert all(interval == 0 for _, _, interval in writer.calls)
 
+    def test_word_pause_after_every_word(self):
+        # Regression: chunks used to end just before each space, so the
+        # between-words delay almost never ran.
+        writer = FakeWriter()
+        engine = TypingEngine(writer)
+        waits: list[float] = []
+        engine._wait = waits.append  # record the delay instead of sleeping
+        done = threading.Event()
+        engine._on_complete = lambda e, i: done.set()
+
+        engine.start("hello big world{Enter}bye",
+                     Settings(speed_ms=0, delay_ms=50, start_countdown_s=0))
+        assert done.wait(5)
+        assert waits == [0.05, 0.05, 0.05]  # after "hello ", "big ", "world{Enter}"
+        assert typed_text(writer) == "hello big worldbye"
+
     def test_loop_count_repeats(self):
         writer, _, result = run_engine(
             "x", Settings(speed_ms=0, start_countdown_s=0, loop_count=3)

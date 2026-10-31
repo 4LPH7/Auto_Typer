@@ -36,6 +36,9 @@ class Settings:
     loop_count: int = 1  # 0 = infinite
     human_jitter_pct: int = 0  # ±% random speed variation, 0 = off
     start_countdown_s: int = 3  # countdown before typing begins
+    start_hotkey: list[str] = field(default_factory=list)  # pynput key names, empty = disabled
+    pause_hotkey: list[str] = field(default_factory=list)  # pynput key names, empty = disabled
+    stop_hotkey: list[str] = field(default_factory=list)  # pynput key names, empty = disabled
 
     def validated(self) -> Settings:
         """Return a copy with out-of-range values clamped to safe defaults."""

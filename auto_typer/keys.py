@@ -52,6 +52,17 @@ class SpecialKey:
     name: str  # pyautogui key name
 
 
+# Special keys that separate words, like the whitespace they stand for.
+_WORD_GAP_KEYS = {"enter", "tab", "space"}
+
+
+def is_word_gap(token: str | SpecialKey) -> bool:
+    """True for a token between words: whitespace, or the Enter, Tab or Space key."""
+    if isinstance(token, SpecialKey):
+        return token.name in _WORD_GAP_KEYS
+    return token.isspace()
+
+
 def normalize_key_name(name: str) -> str | None:
     """Return the canonical pyautogui key name for *name*, or None if unknown."""
     return _SPECIAL_KEYS.get(name.strip().lower())

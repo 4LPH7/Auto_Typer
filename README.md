@@ -14,7 +14,8 @@ A modern and customizable auto-typing application built with Python 3.15 and Cus
 - **Extended Special Keys**: `{Enter}`, `{Tab}`, `{Space}`, `{Backspace}`, `{Delete}`, `{Esc}`, `{Up}`/`{Down}`/`{Left}`/`{Right}`, `{Home}`, `{End}`, `{PageUp}`, `{PageDown}`, `{Win}`, `{F1}`–`{F12}`. Unknown `{...}` sequences are typed literally.
 - **Human Mode**: Randomized per-chunk speed jitter (±%) for realistic typing.
 - **Saved Settings**: Speed, delay, hotkey, theme, and options persist across sessions (`%APPDATA%/AutoTyper/settings.json`).
-- **Dark and Light Mode**.
+- **Dark and Light Mode**: Light / Dark toggle in the header; preference is remembered.
+- **Polished UI**: Compact window with a pinned action bar (status, progress, Start / Pause / Stop), a live word, keystroke and time estimate for your text, keycap-style hotkey buttons, and a letter-case control labelled by its effect.
 - **Fast Typing Engine**: Types in chunks with pyautogui's hidden per-call pause disabled — the requested speed is the speed you get.
 
 ## Requirements
