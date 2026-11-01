@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-typer"
-version = "2.0.0"
+version = "2.1.0"
 description = "A modern and customizable auto-typing application with hotkeys, loops, and human-like typing modes."
 readme = "README.md"
 license = "MIT"
@@ -20,6 +20,7 @@ dependencies = [
     "customtkinter>=5.2.2",
     "pynput>=1.8.1",
     "pyautogui>=0.9.54",
+    "segno>=1.6.6",
 ]
 
 [project.optional-dependencies]

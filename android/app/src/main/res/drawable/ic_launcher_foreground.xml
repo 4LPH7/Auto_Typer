@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A key with a text caret, and the lime progress line under it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,32h32a6,6 0 0 1 6,6v26a6,6 0 0 1 -6,6h-32a6,6 0 0 1 -6,-6v-26a6,6 0 0 1 6,-6z" />
+    <path
+        android:fillColor="#0C0D0F"
+        android:pathData="M52,40h4v22h-4z" />
+    <path
+        android:fillColor="#C6F24E"
+        android:pathData="M32,76h44v4h-44z" />
+</vector>

@@ -1,3 +1,4 @@
 customtkinter>=5.2.2
 pynput>=1.8.1
 pyautogui>=0.9.54
+segno>=1.6.6
