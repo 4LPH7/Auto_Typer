@@ -1,0 +1,6 @@
+<resources>
+    <!-- Compose draws the UI; this only colours the window behind it. -->
+    <style name="Theme.AutoTyper" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ground</item>
+    </style>
+</resources>

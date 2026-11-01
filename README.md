@@ -45,11 +45,22 @@ A modern and customizable auto-typing application built with Python 3.15 and Cus
 
 ## Usage
 
-1. **Enter Text**: Input the text to be auto-typed (or load a `.txt` file).
-2. **Configure Settings**: Adjust typing speed, word delay, loop count, jitter, and caps mode.
-3. **Register Hotkey**: Click *Register Hotkey* and press the desired combination.
-4. **Start Typing**: Press the hotkey or click *Start Typing* — a countdown gives you time to focus the target window.
-5. **Pause / Stop**: Click *Pause Typing* to hold mid-session; press `ESC` or *Stop Typing* to halt.
+1. **Enter text**: type or paste it, or use *Load file…*. `{Enter}`, `{Tab}` and `{F1}`–`{F12}` press keys.
+2. **Settings**: key delay, word pause, repeat, jitter and letter case.
+3. **Hotkeys** (optional): click the Start, Pause or Stop key and press the keys you want. F8 and F9 work well; avoid letters and punctuation, which fire whenever you type them.
+4. **Start typing**: click it or press your Start hotkey. After a 3 s countdown it types into the active window.
+5. **Pause / Stop**: use the buttons or your hotkeys. `Esc` always stops.
+
+## Phone remote (Android)
+
+Send text from your phone and let the PC type it.
+
+1. Install `AutoTyper.apk` from the [latest release](https://github.com/4LPH7/Auto_Typer/releases/latest) on your phone (allow installs from your browser or file manager when Android asks).
+2. On the PC, click **Phone** and switch it **On**. Allow Auto Typer if Windows Firewall asks.
+3. In the app, tap **Scan QR code**, or type the address and code shown on the PC.
+4. Write or paste text, set the options and tap **Start typing**. The PC types into its active window; pause, resume or stop from the phone, or press `Esc` on the PC.
+
+The phone and PC must be on the same Wi-Fi. The remote is off every time Auto Typer starts, and switching it off and on makes a new code. The protocol is in [docs/remote-protocol.md](docs/remote-protocol.md).
 
 ## Standalone Executable
 
@@ -77,7 +88,9 @@ auto_typer/
 ├── typer.py      # TypingEngine: chunked typing, pause/stop, loops, jitter
 ├── keys.py       # tokenizer + caps modes
 ├── config.py     # Settings dataclass + JSON persistence
-└── hotkeys.py    # pynput global hotkey listener
+├── hotkeys.py    # pynput global hotkey listener
+└── remote.py     # phone remote: LAN HTTP server (docs/remote-protocol.md)
+android/          # Android remote app (Kotlin + Jetpack Compose)
 ```
 
 ## Contribution

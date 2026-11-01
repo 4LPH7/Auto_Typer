@@ -9,17 +9,22 @@ from __future__ import annotations
 
 import queue
 import sys
+import time
+import tkinter
 import tkinter.filedialog
 from collections.abc import Callable
+from concurrent.futures import Future
 from tkinter import messagebox
 from typing import Any
 
 import customtkinter as ctk
 import pyautogui
+import segno
 
 from .config import Settings, load_settings, save_settings
 from .hotkeys import HotkeyManager
 from .keys import CapsMode, is_word_gap, tokenize
+from .remote import PROTOCOL_VERSION, RemoteError, RemoteServer, lan_ip
 from .typer import TypingEngine
 
 pyautogui.PAUSE = 0  # remove pyautogui's hidden 0.1 s per-call delay
@@ -115,6 +120,12 @@ class AutoTyperApp:
         }
         self._countdown_left = 0
         self._runs = 1
+        self._remote_status: dict[str, Any] = {}  # replaced whole, read by the server thread
+        self.remote = RemoteServer(
+            lambda: self._remote_status, lambda: self.settings, self._remote_command
+        )
+        self._phone_dialog: ctk.CTkToplevel | None = None
+        self._phone_label = ""
 
         self._build_ui()
         self._apply_settings_to_ui()
@@ -163,14 +174,25 @@ class AutoTyperApp:
             side="left"
         )
 
-        self.mode_toggle = ctk.CTkSegmentedButton(
-            header, values=["Light", "Dark"], command=self._toggle_mode,
+        self.mode_toggle = self._small_toggle(header, ["Light", "Dark"], self._toggle_mode)
+        self.mode_toggle.set("Dark" if self.settings.dark_mode else "Light")
+        self.mode_toggle.pack(side="right")
+        self.phone_button = ctk.CTkButton(
+            header, text="Phone", command=self._open_phone_dialog, width=72, height=28,
+            corner_radius=14, font=self.font_small, fg_color=RAISED, hover_color=HOVER,
+            text_color=TEXT,
+        )
+        self.phone_button.pack(side="right", padx=(0, 8))
+
+    def _small_toggle(
+        self, parent: Any, values: list[str], command: Callable[[str], None]
+    ) -> ctk.CTkSegmentedButton:
+        return ctk.CTkSegmentedButton(
+            parent, values=values, command=command,
             font=self.font_small, height=28, corner_radius=14, border_width=3,
             fg_color=RAISED, unselected_color=RAISED, unselected_hover_color=HOVER,
             selected_color=SELECTED, selected_hover_color=SELECTED, text_color=TEXT,
         )
-        self.mode_toggle.set("Dark" if self.settings.dark_mode else "Light")
-        self.mode_toggle.pack(side="right")
 
     def _build_text_section(self, body: ctk.CTkFrame) -> None:
         self.text_input = ctk.CTkTextbox(
@@ -330,16 +352,21 @@ class AutoTyperApp:
             border_color=RAISED,
         )
 
-    def _apply_settings_to_ui(self) -> None:
+    def _set_fields(self, settings: Settings) -> None:
+        """Show *settings* in the typing fields, replacing what they held."""
         for entry, value in (
-            (self.speed_entry, self.settings.speed_ms),
-            (self.delay_entry, self.settings.delay_ms),
-            (self.loop_entry, self.settings.loop_count),
-            (self.jitter_entry, self.settings.human_jitter_pct),
+            (self.speed_entry, settings.speed_ms),
+            (self.delay_entry, settings.delay_ms),
+            (self.loop_entry, settings.loop_count),
+            (self.jitter_entry, settings.human_jitter_pct),
         ):
+            entry.delete(0, "end")
             entry.insert(0, str(value))
-        self.caps_mode = self.settings.caps_mode
+        self.caps_mode = settings.caps_mode
         self.caps_segmented.set(_CASE_LABELS[self.caps_mode])
+
+    def _apply_settings_to_ui(self) -> None:
+        self._set_fields(self.settings)
         for kind in self.hotkey_buttons:
             self._show_hotkey(kind)
         self._update_estimate()
@@ -430,6 +457,25 @@ class AutoTyperApp:
                 self.pause_button.pack(side="right", padx=(0, 8))
             else:
                 self.start_button.pack(side="right")
+
+        settings = self._collect_settings()
+        self._remote_status = {
+            "version": PROTOCOL_VERSION,
+            "phase": phase,
+            "title": title,
+            "detail": detail,
+            "done": self._done,
+            "total": self._total,
+            "elapsed_s": round(self.engine.elapsed, 1),
+            "settings": {
+                "speed_ms": settings.speed_ms,
+                "delay_ms": settings.delay_ms,
+                "loop_count": settings.loop_count,
+                "human_jitter_pct": settings.human_jitter_pct,
+                "caps_mode": settings.caps_mode.value,
+            },
+        }
+        self._update_phone_button()
 
     # -------------------------------------------------------------- actions
 
@@ -532,9 +578,133 @@ class AutoTyperApp:
             self.progress_bar.set(1)
         self._update_status()
 
+    # --------------------------------------------------------- phone remote
+
+    def _remote_command(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Called on a server thread: run the command on the Tk thread and wait."""
+        result: Future[dict[str, Any]] = Future()
+
+        def run() -> None:
+            try:
+                result.set_result(self._run_remote_command(name, args))
+            except Exception as exc:  # re-raised on the server thread
+                result.set_exception(exc)
+
+        self._events.put((run, ()))
+        return result.result(timeout=5)
+
+    def _run_remote_command(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        running = self.engine.running
+        if name == "start":
+            if running:
+                raise RemoteError(409, "already typing")
+            self._set_fields(args["settings"])
+            self.text_input.delete("1.0", "end")
+            self.text_input.insert("1.0", args["text"])
+            self._update_estimate()
+            self.start_typing()
+        elif name == "pause" and running:
+            self.engine.pause()
+        elif name == "resume" and running:
+            self.engine.resume()
+        elif name == "stop":
+            self.stop_typing()
+        self._update_status()
+        return {"ok": True}
+
+    def _update_phone_button(self) -> None:
+        if not self.remote.running:
+            label = "Phone"
+        elif time.monotonic() - self.remote.last_seen < 5:
+            label = "Phone · connected"
+        else:
+            label = "Phone · on"
+        if label != self._phone_label:
+            self._phone_label = label
+            self.phone_button.configure(text=label)
+
+    def _open_phone_dialog(self) -> None:
+        if self._phone_dialog is not None and self._phone_dialog.winfo_exists():
+            self._phone_dialog.focus()
+            return
+        dialog = ctk.CTkToplevel(self.app, fg_color=GROUND)
+        dialog.title("Connect a phone")
+        dialog.resizable(False, False)
+        dialog.transient(self.app)
+        self._phone_dialog = dialog
+
+        body = ctk.CTkFrame(dialog, fg_color="transparent")
+        body.pack(padx=_PAD, pady=_PAD)
+        row = ctk.CTkFrame(body, fg_color="transparent")
+        row.pack(fill="x")
+        ctk.CTkLabel(row, text="Phone remote", font=self.font_section, text_color=TEXT).pack(
+            side="left"
+        )
+        self.remote_toggle = self._small_toggle(row, ["Off", "On"], self._toggle_remote)
+        self.remote_toggle.set("On" if self.remote.running else "Off")
+        self.remote_toggle.pack(side="right", padx=(24, 0))
+
+        self.qr_canvas = tkinter.Canvas(body, bg="#ffffff", highlightthickness=0)
+        self.pair_code = ctk.CTkLabel(body, text="", font=self.font_title, text_color=TEXT, anchor="w")
+        self.pair_code.pack(fill="x", pady=(12, 0))
+        self.pair_hint = ctk.CTkLabel(
+            body, text="", font=self.font_small, text_color=MUTED, anchor="w", justify="left",
+            wraplength=300,
+        )
+        self.pair_hint.pack(fill="x", pady=(4, 0))
+        self._show_pairing()
+
+    def _toggle_remote(self, value: str) -> None:
+        if value == "On":
+            try:
+                self.remote.start()
+            except OSError as exc:  # e.g. no network adapter
+                self.remote_toggle.set("Off")
+                self.pair_hint.configure(text=f"Couldn't switch the remote on: {exc}")
+                return
+        else:
+            self.remote.stop()
+        self._show_pairing()
+        self._update_phone_button()
+
+    def _show_pairing(self) -> None:
+        if not self.remote.running:
+            self.qr_canvas.pack_forget()
+            self.pair_code.configure(text="")
+            self.pair_hint.configure(
+                text="Switch on to pair the Auto Typer app on your phone. "
+                "Only a phone with the code can control typing."
+            )
+            return
+        host = lan_ip()
+        self._draw_qr(self.remote.pair_uri(host))
+        self.qr_canvas.pack(pady=(16, 0), before=self.pair_code)
+        code = self.remote.code
+        self.pair_code.configure(text=f"{code[:4]} {code[4:]}")
+        self.pair_hint.configure(
+            text=f"Scan with the Auto Typer app, or enter {host}:{self.remote.port} and this "
+            "code. Your phone must be on the same Wi-Fi. Allow Auto Typer if Windows "
+            "Firewall asks. Switching off and on makes a new code."
+        )
+
+    def _draw_qr(self, text: str) -> None:
+        """Draw *text* as a QR code, black on white so any scanner can read it."""
+        cell = max(3, round(4 * self.app.winfo_fpixels("1i") / 96))  # canvas units are pixels
+        rows = [list(row) for row in segno.make(text, error="m").matrix_iter(border=4)]
+        self.qr_canvas.configure(width=len(rows) * cell, height=len(rows) * cell)
+        self.qr_canvas.delete("all")
+        for y, row in enumerate(rows):
+            for x, dark in enumerate(row):
+                if dark:
+                    self.qr_canvas.create_rectangle(
+                        x * cell, y * cell, (x + 1) * cell, (y + 1) * cell,
+                        fill="#000000", width=0,
+                    )
+
     # ------------------------------------------------------------ lifecycle
 
     def _on_close(self) -> None:
+        self.remote.stop()
         self._collect_settings()
         save_settings(self.settings)
         self.engine.stop()
