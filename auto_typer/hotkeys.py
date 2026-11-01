@@ -77,14 +77,17 @@ class HotkeyManager:
         if self._listener:
             self._listener.stop()
 
-    def _on_press(self, key: Any) -> None:
+    def _on_press(self, key: Any, injected: bool = False) -> None:
+        # Keys the app types itself arrive flagged as injected. They must never
+        # match a hotkey, or a "." in the passage would trip a "." hotkey.
         name = _key_name(key)
-        if name is None:
+        if injected or name is None:
             return
 
         fire_captured: list[str] | None = None
         fire_trigger = False
         with self._lock:
+            repeat = name in self._pressed  # Windows auto-repeats a held key
             self._pressed.add(name)
             if self._capturing:
                 # Capture completes as soon as a non-modifier joins the
@@ -93,7 +96,7 @@ class HotkeyManager:
                     fire_captured = sorted(self._pressed)
                     self._hotkey = frozenset(fire_captured)
                     self._capturing = False
-            elif self._hotkey and self._pressed == set(self._hotkey):
+            elif not repeat and self._hotkey and self._pressed == set(self._hotkey):
                 fire_trigger = True
 
         if fire_captured is not None:
@@ -101,7 +104,9 @@ class HotkeyManager:
         elif fire_trigger:
             self._on_trigger()
 
-    def _on_release(self, key: Any) -> None:
+    def _on_release(self, key: Any, injected: bool = False) -> None:
+        if injected:  # the app's own typing, e.g. a typed {Esc}
+            return
         name = _key_name(key)
 
         fire_captured: list[str] | None = None
