@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from .config import Settings
-from .keys import SpecialKey, apply_caps_mode, tokenize
+from .keys import SpecialKey, apply_caps_mode, is_word_gap, tokenize
 
 _TOKENS_PER_CHUNK = 8
 
@@ -147,7 +147,7 @@ class TypingEngine:
             done += width
             if self._on_progress:
                 self._on_progress(done, total)
-            if isinstance(chunk_tokens[-1], str) and chunk_tokens[-1].isspace():
+            if is_word_gap(chunk_tokens[-1]):
                 # Word boundary: apply the configured between-words delay.
                 if not self._wait_if_paused():
                     return False
@@ -156,15 +156,12 @@ class TypingEngine:
 
     @staticmethod
     def _chunks(tokens: list[str | SpecialKey], limit: int = _TOKENS_PER_CHUNK):
-        """Yield token batches of at most *limit*, breaking early at word
-        boundaries so the between-words delay lands after a full word."""
+        """Yield token batches of at most *limit*, ending a batch after every
+        word gap so the between-words delay lands after each full word."""
         batch: list[str | SpecialKey] = []
-        for i, token in enumerate(tokens):
+        for token in tokens:
             batch.append(token)
-            next_is_space = (
-                i + 1 < len(tokens) and isinstance(tokens[i + 1], str) and tokens[i + 1].isspace()
-            )
-            if len(batch) >= limit or (len(batch) >= limit // 2 and next_is_space):
+            if len(batch) >= limit or is_word_gap(token):
                 yield batch
                 batch = []
         if batch:
