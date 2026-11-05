@@ -3,6 +3,7 @@ name: build
 on:
   pull_request:
   push:
+    branches: [main]
     tags: ['v*']
 
 permissions:
@@ -16,7 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.15'
-      - run: pip install pyinstaller pytest -r requirements.txt
+      - run: pip install -e .[dev]
+      - run: ruff check .
+      - run: mypy
       - run: python -m pytest -q
       - run: pyinstaller build_exe.spec --noconfirm
       - uses: actions/upload-artifact@v4
@@ -37,8 +40,8 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Test and build (pull request)
-        if: github.event_name == 'pull_request'
+      - name: Test and build (pull request or main)
+        if: "!startsWith(github.ref, 'refs/tags/')"
         run: |
           ./gradlew test assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/AutoTyper.apk"

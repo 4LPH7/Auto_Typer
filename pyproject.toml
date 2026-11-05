@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-typer"
-version = "2.1.0"
+dynamic = ["version"]
 description = "A modern and customizable auto-typing application with hotkeys, loops, and human-like typing modes."
 readme = "README.md"
 license = "MIT"
@@ -19,14 +19,17 @@ classifiers = [
 dependencies = [
     "customtkinter>=5.2.2",
     "pynput>=1.8.1",
-    "pyautogui>=0.9.54",
     "segno>=1.6.6",
+    "pystray>=0.19.5",
+    "pillow>=11.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pyinstaller>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
 ]
 
 [project.urls]
@@ -38,5 +41,31 @@ auto-typer = "auto_typer.app:main"
 [tool.setuptools]
 packages = ["auto_typer"]
 
+[tool.setuptools.dynamic]
+version = { attr = "auto_typer.__version__" }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = ["E501"]  # line length is advisory; a few labels and tables read better long
+
+[tool.ruff.lint.isort]
+known-first-party = ["auto_typer"]
+
+[tool.mypy]
+python_version = "3.13"
+packages = ["auto_typer"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["customtkinter", "customtkinter.*", "pystray", "pystray.*", "segno", "pynput", "pynput.*", "PIL", "PIL.*", "pyperclip"]
+ignore_missing_imports = true

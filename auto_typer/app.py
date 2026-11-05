@@ -18,19 +18,19 @@ from tkinter import messagebox
 from typing import Any
 
 import customtkinter as ctk
-import pyautogui
 import segno
 
-from .config import Settings, load_settings, save_settings
+from . import system
+from .background import SingleInstance, start_tray, write_icon
+from .config import Settings, load_settings, save_settings, settings_path
 from .hotkeys import HotkeyManager
-from .keys import CapsMode, is_word_gap, tokenize
+from .keys import CapsMode, is_word_gap, keystrokes, pause_seconds, tokenize
 from .remote import PROTOCOL_VERSION, RemoteError, RemoteServer, lan_ip
 from .typer import TypingEngine
 
-pyautogui.PAUSE = 0  # remove pyautogui's hidden 0.1 s per-call delay
-
 _PAD = 24  # outer horizontal padding
 _GAP = 16  # space between sections
+_RESUME_COUNTDOWN_S = 3  # time to click back into the target after Resume
 
 # Colour tokens as (light, dark) pairs. Surfaces are told apart by a step in
 # lightness alone (no borders, no shadows). The one hue marks live data only:
@@ -82,8 +82,13 @@ def _duration(seconds: float) -> str:
 class AutoTyperApp:
     """Main application window and controller."""
 
-    def __init__(self) -> None:
+    def __init__(self, instance: SingleInstance | None = None, *, start_hidden: bool = False) -> None:
         self.settings = load_settings()
+        self.instance = instance  # this copy's claim; later launches ask it to show
+        self.start_hidden = start_hidden  # begin in the tray (autostart at sign-in)
+        self.tray: Any = None  # the pystray icon, once run() starts it
+        self._told_about_tray = False
+        self._focus_lost = False  # the focus guard paused the session
         self._events: queue.Queue[tuple[Callable[..., None], tuple[Any, ...]]] = queue.Queue()
         self._phase = "ready"  # ready | countdown | typing | done | stopped
         self._done = 0
@@ -96,6 +101,7 @@ class AutoTyperApp:
             on_countdown=self._emit(self._on_countdown),
             on_progress=self._emit(self._on_progress),
             on_complete=self._emit(self._on_complete),
+            on_focus_lost=self._emit(self._on_focus_lost),
         )
         self.hotkeys = HotkeyManager(
             on_trigger=self._emit(self.start_typing),
@@ -130,7 +136,7 @@ class AutoTyperApp:
         self._build_ui()
         self._apply_settings_to_ui()
         self._update_status()
-        self.app.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.app.protocol("WM_DELETE_WINDOW", self._close_window)
         self._poll_events()
         self._poll_timer()
 
@@ -141,8 +147,9 @@ class AutoTyperApp:
 
         self.app = ctk.CTk(fg_color=GROUND)
         self.app.title("Auto Typer")
-        self.app.minsize(520, 600)
-        self._place_window(560, 640)
+        self.app.minsize(520, 660)
+        self._place_window(560, 700)
+        self._set_window_icon()
 
         self.font_title = _font(20, semibold=True)
         self.font_section = _font(16, semibold=True)
@@ -157,6 +164,13 @@ class AutoTyperApp:
         body.pack(fill="both", expand=True, padx=_PAD, pady=(0, _GAP))
         self._build_text_section(body)
         self._build_settings_section(body)
+
+    def _set_window_icon(self) -> None:
+        """Use the app icon in the title bar and taskbar instead of Tk's feather."""
+        try:
+            self.app.iconbitmap(str(write_icon(settings_path().parent / "AutoTyper.ico")))
+        except Exception:  # noqa: BLE001 - a missing icon is not worth failing to start over
+            pass
 
     def _place_window(self, width: int, height: int) -> None:
         """Size the window to fit the screen and centre it, nudged up so the
@@ -264,6 +278,20 @@ class AutoTyperApp:
             button.pack(fill="x")
             self.hotkey_buttons[kind] = button
 
+        options = ctk.CTkFrame(grid, fg_color="transparent")
+        options.grid(row=3, column=0, columnspan=4, sticky="ew", padx=6, pady=(2, 6))
+        self.paste_switch = self._switch(options, "Paste instead of typing")
+        self.paste_switch.pack(side="left", fill="x", expand=True)
+        self.focus_switch = self._switch(options, "Pause if the window changes")
+        self.focus_switch.pack(side="left", fill="x", expand=True)
+
+    def _switch(self, parent: Any, text: str) -> ctk.CTkSwitch:
+        return ctk.CTkSwitch(
+            parent, text=text, command=self._update_estimate, font=self.font_small,
+            text_color=MUTED, fg_color=RAISED, progress_color=ACCENT,
+            button_color=TEXT, button_hover_color=TEXT, switch_width=36, switch_height=18,
+        )
+
     def _build_action_bar(self) -> None:
         bar = ctk.CTkFrame(self.app, fg_color=SURFACE, corner_radius=0)
         bar.pack(side="bottom", fill="x")
@@ -364,6 +392,9 @@ class AutoTyperApp:
             entry.insert(0, str(value))
         self.caps_mode = settings.caps_mode
         self.caps_segmented.set(_CASE_LABELS[self.caps_mode])
+        for switch, on in ((self.paste_switch, settings.paste_mode),
+                           (self.focus_switch, settings.focus_guard)):
+            switch.select() if on else switch.deselect()
 
     def _apply_settings_to_ui(self) -> None:
         self._set_fields(self.settings)
@@ -376,13 +407,18 @@ class AutoTyperApp:
         text = self.text_input.get("1.0", "end").strip()
         if not text:
             self.estimate_label.configure(
-                text="Type or paste text. {Enter}, {Tab} and {F1}–{F12} press keys."
+                text="Type or paste text. {Enter}, {Ctrl+S} and {Sleep 500} press keys and wait."
             )
             return
         settings = self._collect_settings()
         tokens = tokenize(text)
-        gaps = sum(map(is_word_gap, tokens))
-        per_run = (len(tokens) * settings.speed_ms + gaps * settings.delay_ms) / 1000
+        presses = keystrokes(tokens)
+        if settings.paste_mode:
+            per_run = 0.5 + pause_seconds(tokens)  # one Ctrl+V, give or take
+        else:
+            gaps = sum(map(is_word_gap, tokens))
+            per_run = (presses * settings.speed_ms + gaps * settings.delay_ms) / 1000
+            per_run += pause_seconds(tokens)
         words = len(text.split())
         if settings.loop_count == 0:
             time = f"about {_duration(per_run)} a run, repeats until stopped"
@@ -390,9 +426,8 @@ class AutoTyperApp:
             time = f"about {_duration(per_run * settings.loop_count)} for {settings.loop_count} runs"
         else:
             time = f"about {_duration(per_run)}"
-        self.estimate_label.configure(
-            text=f"{words} word{'s' * (words != 1)}  ·  {len(tokens)} keystrokes  ·  {time}"
-        )
+        how = "pasted" if settings.paste_mode else f"{presses} keystrokes"
+        self.estimate_label.configure(text=f"{words} word{'s' * (words != 1)}  ·  {how}  ·  {time}")
 
     # ------------------------------------------------- cross-thread plumbing
 
@@ -439,7 +474,12 @@ class AutoTyperApp:
                 WARNING,
             ),
             "typing": ("Typing", f"{progress}  ·  {elapsed}  ·  Esc stops", ACCENT),
-            "paused": ("Paused", f"{progress}  ·  {elapsed}  ·  Esc stops", WARNING),
+            "paused": (
+                "Paused",
+                "The active window changed  ·  Resume types into the window that's active now"
+                if self._focus_lost else f"{progress}  ·  {elapsed}  ·  Esc stops",
+                WARNING,
+            ),
             "done": ("Done", finished, ACCENT),
             "stopped": ("Stopped", f"{progress}  ·  {elapsed}", FAINT),
         }[phase]
@@ -473,6 +513,8 @@ class AutoTyperApp:
                 "loop_count": settings.loop_count,
                 "human_jitter_pct": settings.human_jitter_pct,
                 "caps_mode": settings.caps_mode.value,
+                "paste_mode": settings.paste_mode,
+                "focus_guard": settings.focus_guard,
             },
         }
         self._update_phone_button()
@@ -527,6 +569,8 @@ class AutoTyperApp:
         self.settings.loop_count = int_or(self.loop_entry, self.settings.loop_count)
         self.settings.human_jitter_pct = int_or(self.jitter_entry, self.settings.human_jitter_pct)
         self.settings.caps_mode = self.caps_mode
+        self.settings.paste_mode = bool(self.paste_switch.get())
+        self.settings.focus_guard = bool(self.focus_switch.get())
         return self.settings.validated()
 
     def start_typing(self) -> None:
@@ -541,8 +585,9 @@ class AutoTyperApp:
             return  # already running
         self._phase = "countdown" if settings.start_countdown_s else "typing"
         self._countdown_left = settings.start_countdown_s
-        self._done, self._total = 0, len(tokenize(text))
+        self._done, self._total = 0, keystrokes(tokenize(text))
         self._stop_requested = False
+        self._focus_lost = False
         self.progress_bar.set(0)
         self._update_status()
 
@@ -553,9 +598,16 @@ class AutoTyperApp:
 
     def toggle_pause(self) -> None:
         if self.engine.paused:
-            self.engine.resume()
+            self.resume_typing()
         else:
             self.engine.pause()
+
+    def resume_typing(self) -> None:
+        self._focus_lost = False
+        # Clicking Resume makes Auto Typer the active window. Count down first,
+        # so typing goes back into the target instead of into Auto Typer itself.
+        self.engine.resume(_RESUME_COUNTDOWN_S if system.foreground_is_ours() else 0)
+        self._update_status()
 
     def _toggle_mode(self, value: str) -> None:
         self.settings.dark_mode = value == "Dark"
@@ -570,6 +622,17 @@ class AutoTyperApp:
     def _on_progress(self, done: int, total: int) -> None:
         self._phase, self._done, self._total = "typing", done, total
         self.progress_bar.set(done / total if total else 0.0)
+
+    def _on_focus_lost(self) -> None:
+        """The focus guard paused typing because another window took focus."""
+        self._focus_lost = True
+        self._update_status()
+        if self.tray is not None and self.app.state() == "withdrawn":
+            self.tray.notify(
+                "Typing paused: the active window changed. Press your Pause hotkey "
+                "or open Auto Typer to resume.",
+                "Auto Typer",
+            )
 
     def _on_complete(self, elapsed: float, iterations: int) -> None:
         self._phase = "stopped" if self._stop_requested else "done"
@@ -606,7 +669,7 @@ class AutoTyperApp:
         elif name == "pause" and running:
             self.engine.pause()
         elif name == "resume" and running:
-            self.engine.resume()
+            self.resume_typing()
         elif name == "stop":
             self.stop_typing()
         self._update_status()
@@ -701,9 +764,66 @@ class AutoTyperApp:
                         fill="#000000", width=0,
                     )
 
+    # ----------------------------------------------------------- background
+
+    def _start_background(self) -> None:
+        if self.instance is not None:
+            self.instance.listen(self._emit(self._show_window))
+        try:
+            self.tray = start_tray(
+                on_show=self._emit(self._show_window),
+                on_quit=self._emit(self._quit),
+                keep_running=lambda: self.settings.run_in_background,
+                on_toggle_keep_running=self._emit(self._toggle_background),
+                on_toggle_autostart=self._emit(self._toggle_autostart),
+            )
+        except Exception:  # no system tray here: closing the window quits instead
+            self.tray = None
+        try:
+            if system.autostart_enabled():
+                system.set_autostart(True)  # keep the entry current if the exe moved
+        except OSError:
+            pass
+
+    def _close_window(self) -> None:
+        """The window's close button: hide to the tray, or quit if that's off."""
+        if self.tray is None or not self.settings.run_in_background:
+            self._quit()
+            return
+        self.app.withdraw()
+        if not self._told_about_tray:
+            self._told_about_tray = True
+            self.tray.notify(
+                "Auto Typer is still running. Hotkeys and the phone remote keep working. "
+                "Right-click the tray icon to quit.",
+                "Auto Typer",
+            )
+
+    def _show_window(self) -> None:
+        self.app.deiconify()
+        self.app.lift()
+        self.app.focus_force()
+
+    def _toggle_background(self) -> None:
+        self.settings.run_in_background = not self.settings.run_in_background
+        save_settings(self.settings)  # now, in case this copy is killed rather than quit
+        self.tray.update_menu()
+
+    def _toggle_autostart(self) -> None:
+        try:
+            system.set_autostart(not system.autostart_enabled())
+        except OSError as exc:
+            messagebox.showerror("Start with Windows", f"Couldn't change the setting: {exc}")
+        self.tray.update_menu()
+
     # ------------------------------------------------------------ lifecycle
 
-    def _on_close(self) -> None:
+    def _quit(self) -> None:
+        if self.tray is not None:
+            self.tray.visible = False  # removes the icon now; stop() alone is asynchronous
+            self.tray.stop()
+        if self.instance is not None:
+            self.instance.close()
         self.remote.stop()
         self._collect_settings()
         save_settings(self.settings)
@@ -715,8 +835,16 @@ class AutoTyperApp:
     def run(self) -> None:
         for manager in self._hotkey_managers.values():
             manager.start()
+        self._start_background()
+        if self.start_hidden and self.tray is not None and self.settings.run_in_background:
+            self.app.withdraw()
         self.app.mainloop()
 
 
-def main() -> None:
-    AutoTyperApp().run()
+def main(argv: list[str] | None = None) -> None:
+    """Start Auto Typer. ``--hidden`` begins in the tray (used by autostart)."""
+    args = sys.argv[1:] if argv is None else argv
+    instance = SingleInstance.claim()
+    if instance is None:
+        return  # Auto Typer is already running; it was asked to show its window
+    AutoTyperApp(instance, start_hidden="--hidden" in args).run()

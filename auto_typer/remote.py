@@ -32,6 +32,7 @@ _MAX_FAILURES = 5
 _FAILURE_WINDOW_S = 60.0
 _COMMANDS = ("start", "pause", "resume", "stop")
 _INT_SETTINGS = ("speed_ms", "delay_ms", "loop_count", "human_jitter_pct")
+_BOOL_SETTINGS = ("paste_mode", "focus_guard")
 
 
 class RemoteError(Exception):
@@ -74,6 +75,11 @@ def parse_start(payload: Any, current: Settings) -> tuple[str, Settings]:
             if isinstance(value, bool) or not isinstance(value, int):
                 raise RemoteError(400, f"{name} must be a whole number")
             changes[name] = value
+    for name in _BOOL_SETTINGS:
+        if name in raw:
+            if not isinstance(raw[name], bool):
+                raise RemoteError(400, f"{name} must be true or false")
+            changes[name] = raw[name]
     if "caps_mode" in raw:
         try:
             changes["caps_mode"] = CapsMode(raw["caps_mode"])

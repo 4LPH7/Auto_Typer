@@ -61,14 +61,16 @@ def test_start_merges_and_clamps_settings(remote):
     body = {
         "request_id": "r1",
         "text": "hello",
-        "settings": {"speed_ms": 999_999, "caps_mode": "uppercase"},
+        "settings": {"speed_ms": 999_999, "caps_mode": "uppercase", "paste_mode": True},
     }
     assert call(server, "POST", "/api/start", server.code, body) == (200, {"ok": True})
     [(name, args)] = calls
     assert (name, args["text"]) == ("start", "hello")
     assert args["settings"].speed_ms == 10_000  # clamped
     assert args["settings"].caps_mode is CapsMode.UPPERCASE
+    assert args["settings"].paste_mode is True
     assert args["settings"].delay_ms == Settings().delay_ms  # unsent fields keep the PC's value
+    assert args["settings"].focus_guard == Settings().focus_guard
 
 
 def test_retried_start_types_once(remote):
@@ -86,6 +88,7 @@ def test_retried_start_types_once(remote):
         {"text": "   "},
         {"text": "hi", "settings": {"caps_mode": "shouting"}},
         {"text": "hi", "settings": {"speed_ms": "fast"}},
+        {"text": "hi", "settings": {"paste_mode": "yes"}},
         b"not json",
     ],
 )

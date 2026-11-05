@@ -1,8 +1,12 @@
 # PyInstaller spec: one-file Windows executable for Auto Typer.
 # Build with: pyinstaller build_exe.spec
 import sys
+from pathlib import Path
 
-block_cipher = None
+sys.path.insert(0, SPECPATH)  # so the spec can import the package it builds
+from auto_typer.background import write_icon  # noqa: E402
+
+icon = write_icon(Path(SPECPATH) / "build" / "AutoTyper.ico")  # same icon as the window and tray
 
 a = Analysis(
     ["run.py"],
@@ -13,9 +17,8 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
-    cipher=block_cipher,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
 
 exe = EXE(
     pyz,
@@ -27,7 +30,9 @@ exe = EXE(
     name="AutoTyper",
     debug=False,
     strip=False,
-    upx=True,
+    # UPX-packed one-file exes are a common antivirus false positive, and this
+    # app injects keystrokes, so it gets looked at closely. Leave it unpacked.
+    upx=False,
     console=False,  # GUI app
-    icon=None,
+    icon=str(icon),
 )
