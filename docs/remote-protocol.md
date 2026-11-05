@@ -42,12 +42,19 @@ Status object:
   "done": 58,
   "total": 149,
   "elapsed_s": 2.4,
-  "settings": {"speed_ms": 25, "delay_ms": 0, "loop_count": 1, "human_jitter_pct": 0, "caps_mode": "as_is"}
+  "settings": {
+    "speed_ms": 25, "delay_ms": 0, "loop_count": 1, "human_jitter_pct": 0, "caps_mode": "as_is",
+    "paste_mode": false, "focus_guard": true
+  }
 }
 ```
 
 `phase` is one of `ready`, `empty`, `countdown`, `typing`, `paused`, `done`, `stopped`.
 `caps_mode` is one of `as_is`, `uppercase`, `lowercase`, `sentence_case`.
+`paste_mode` puts the text on the PC's clipboard and presses Ctrl+V instead of typing it.
+`focus_guard` pauses typing if the PC's active window changes; `resume` continues into whichever
+window is active then. Both are booleans and were added after v1 shipped; older phones never send
+them and older PCs ignore them.
 
 ### Start
 
@@ -64,7 +71,7 @@ Errors reply `{"error": "…"}` with:
 
 | Status | When |
 | --- | --- |
-| 400 | invalid JSON, empty text, a wrong type, or an unknown `caps_mode` |
+| 400 | invalid JSON, empty text, a wrong type (booleans must be `true`/`false`), or an unknown `caps_mode` |
 | 401 | missing or wrong code |
 | 403 | the phone isn't on a private (local) network address |
 | 404 | unknown path |

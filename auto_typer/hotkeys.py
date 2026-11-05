@@ -13,14 +13,34 @@ from typing import Any
 from pynput import keyboard
 
 # Modifier keys that may be part of a registered combination.
-_MODIFIER_NAMES = {"ctrl", "ctrl_l", "ctrl_r", "alt", "alt_l", "alt_r",
+_MODIFIER_NAMES = {"ctrl", "ctrl_l", "ctrl_r", "alt", "alt_l", "alt_r", "alt_gr",
                    "shift", "shift_l", "shift_r", "cmd", "cmd_l", "cmd_r", "win"}
+
+# How keys read on a keycap; left and right variants look the same.
+_PRETTY_NAMES = {
+    "ctrl": "Ctrl", "ctrl_l": "Ctrl", "ctrl_r": "Ctrl",
+    "alt": "Alt", "alt_l": "Alt", "alt_r": "Alt", "alt_gr": "AltGr",
+    "shift": "Shift", "shift_l": "Shift", "shift_r": "Shift",
+    "cmd": "Win", "cmd_l": "Win", "cmd_r": "Win", "win": "Win",
+    "esc": "Esc", "page_up": "PageUp", "page_down": "PageDown",
+    "caps_lock": "CapsLock", "num_lock": "NumLock", "scroll_lock": "ScrollLock",
+    "print_screen": "PrintScreen", "space": "Space", "enter": "Enter", "tab": "Tab",
+    "backspace": "Backspace", "delete": "Delete", "insert": "Insert",
+    "up": "↑", "down": "↓", "left": "←", "right": "→",
+}
 
 
 def _key_name(key: Any) -> str | None:
     """Canonical name for *key*, or None if unnameable."""
     if isinstance(key, keyboard.KeyCode):
-        return key.char.lower() if key.char else None
+        if key.char and key.char.isprintable():
+            return key.char.lower()
+        # With Ctrl held, Windows reports a letter as its control character
+        # ("" for T), so Ctrl+T would never match. Name it by its virtual
+        # key code instead, which is the letter or digit itself.
+        if key.vk and (0x30 <= key.vk <= 0x39 or 0x41 <= key.vk <= 0x5A):
+            return chr(key.vk).lower()
+        return None
     return getattr(key, "name", None)
 
 
@@ -59,8 +79,9 @@ class HotkeyManager:
 
     @staticmethod
     def format_names(names: list[str] | set[str]) -> str:
-        """Human-readable label, e.g. ``Ctrl+Alt+T``."""
-        parts = [n.capitalize() for n in sorted(names)]
+        """Human-readable label, modifiers first: ``Ctrl+Alt+T``."""
+        ordered = sorted(names, key=lambda n: (not _is_modifier(n), n))
+        parts = [_PRETTY_NAMES.get(n, n.capitalize()) for n in ordered]
         return "+".join(parts) if parts else "Not Set"
 
     def begin_capture(self) -> None:

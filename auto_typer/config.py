@@ -39,6 +39,9 @@ class Settings:
     start_hotkey: list[str] = field(default_factory=list)  # pynput key names, empty = disabled
     pause_hotkey: list[str] = field(default_factory=list)  # pynput key names, empty = disabled
     stop_hotkey: list[str] = field(default_factory=list)  # pynput key names, empty = disabled
+    run_in_background: bool = True  # closing the window hides it to the tray
+    paste_mode: bool = False  # put the text on the clipboard and press Ctrl+V instead of typing
+    focus_guard: bool = True  # pause if the active window changes while typing
 
     def validated(self) -> Settings:
         """Return a copy with out-of-range values clamped to safe defaults."""

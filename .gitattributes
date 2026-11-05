@@ -1,0 +1,6 @@
+# Normalise line endings so Windows and CI checkouts match.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.ico binary
+*.jar binary

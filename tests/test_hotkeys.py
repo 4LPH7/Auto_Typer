@@ -53,3 +53,24 @@ def test_capture_ignores_own_typing():
     tap(manager, KeyCode.from_char("a"), injected=True)
     tap(manager, Key.f8, injected=False)
     assert fired == ["captured ['f8']"]
+
+
+def test_ctrl_letter_matches_by_virtual_key():
+    # Windows reports T as "" while Ctrl is held; Ctrl+T must still match.
+    manager, fired = make_manager(["ctrl_l", "t"])
+    manager._on_press(Key.ctrl_l, False)
+    manager._on_press(KeyCode(vk=0x54, char=""), False)
+    manager._on_release(KeyCode(vk=0x54, char=""), False)
+    manager._on_release(Key.ctrl_l, False)
+    assert fired == ["trigger"]
+
+
+def test_capture_names_ctrl_letter_by_its_letter():
+    manager, fired = make_manager([])
+    manager.begin_capture()
+    manager._on_press(Key.ctrl_l, False)
+    manager._on_press(KeyCode(vk=0x54, char=""), False)
+    assert fired == ["captured ['ctrl_l', 't']"]
+    assert HotkeyManager.format_names(["t", "ctrl_l"]) == "Ctrl+T"
+    assert HotkeyManager.format_names(["f8"]) == "F8"
+    assert HotkeyManager.format_names([]) == "Not Set"
