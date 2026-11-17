@@ -1,5 +1,6 @@
 """Tests for the phone remote server, over real HTTP on localhost."""
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -47,6 +48,22 @@ def test_status_needs_the_pairing_code(remote):
     assert call(server, "GET", "/api/status")[0] == 401
     assert call(server, "GET", "/api/status", "WRONGCOD")[0] == 401
     assert call(server, "GET", "/api/status", server.code) == (200, STATUS)
+
+
+def test_several_requests_share_one_connection(remote):
+    server, _ = remote
+    connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+    headers = {"Authorization": f"Bearer {server.code}"}
+    sockets = set()
+    try:
+        for _ in range(3):
+            connection.request("GET", "/api/status", headers=headers)
+            response = connection.getresponse()
+            assert json.loads(response.read()) == STATUS
+            sockets.add(connection.sock.getsockname())
+    finally:
+        connection.close()
+    assert len(sockets) == 1  # the phone's polls reuse one TCP connection
 
 
 def test_locks_out_after_five_wrong_codes(remote):
