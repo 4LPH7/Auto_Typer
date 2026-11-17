@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.3.0 — 2026-11-17
 
 ### Added
 - **Phone remote: paste mode and focus guard.** The Android app has switches for both, matching

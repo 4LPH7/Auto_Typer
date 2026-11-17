@@ -17,8 +17,8 @@ android {
         applicationId = "com.alph7.autotyper"
         minSdk = 26
         targetSdk = 36 // 37 would need the ACCESS_LOCAL_NETWORK runtime permission
-        versionCode = 2
-        versionName = "2.2.0"
+        versionCode = 3
+        versionName = "2.3.0"
     }
 
     signingConfigs {
