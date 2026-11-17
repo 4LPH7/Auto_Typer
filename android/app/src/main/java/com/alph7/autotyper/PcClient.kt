@@ -8,6 +8,7 @@ import java.net.URI
 data class Pairing(val host: String, val port: Int, val code: String) {
     companion object {
         const val DEFAULT_PORT = 8765
+        const val PROTOCOL_VERSION = "1" // docs/remote-protocol.md; the PC sends it as `v=`
 
         /** Reads the desktop's QR code: `autotyper://pair?host=…&port=…&code=…&v=1`. */
         fun fromQr(text: String): Pairing? {
@@ -17,6 +18,7 @@ data class Pairing(val host: String, val port: Int, val code: String) {
                 val parts = pair.split("=", limit = 2)
                 if (parts.size == 2) parts[0] to parts[1] else null
             }.toMap()
+            if (params["v"] != PROTOCOL_VERSION) return null // a PC speaking another protocol
             return of(params["host"], params["port"], params["code"])
         }
 
@@ -46,6 +48,8 @@ data class TypingSettings(
     val loopCount: Int = 1,
     val jitterPct: Int = 0,
     val capsMode: String = "as_is",
+    val pasteMode: Boolean = false,
+    val focusGuard: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("speed_ms", speedMs)
@@ -53,6 +57,8 @@ data class TypingSettings(
         .put("loop_count", loopCount)
         .put("human_jitter_pct", jitterPct)
         .put("caps_mode", capsMode)
+        .put("paste_mode", pasteMode)
+        .put("focus_guard", focusGuard)
 
     companion object {
         fun fromJson(json: JSONObject) = TypingSettings(
@@ -61,6 +67,8 @@ data class TypingSettings(
             loopCount = json.optInt("loop_count", 1),
             jitterPct = json.optInt("human_jitter_pct", 0),
             capsMode = json.optString("caps_mode", "as_is"),
+            pasteMode = json.optBoolean("paste_mode", false),
+            focusGuard = json.optBoolean("focus_guard", true),
         )
     }
 }

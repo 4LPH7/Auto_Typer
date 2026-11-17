@@ -1,6 +1,10 @@
 package com.alph7.autotyper
 
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -8,9 +12,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import java.util.UUID
 
@@ -20,6 +25,13 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
     private var client: PcClient? = null
     private var settingsLoaded = false // take the PC's settings once per pairing
     private var pendingStartId: String? = null // reused if a start has to be retried
+    private val wakeUp = Channel<Unit>(Channel.CONFLATED) // a Wi-Fi change polls at once
+    private val connectivity = application.getSystemService(ConnectivityManager::class.java)
+    private val wifiCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            wakeUp.trySend(Unit)
+        }
+    }
 
     var pairing by mutableStateOf<Pairing?>(null)
         private set
@@ -31,6 +43,8 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
         private set
     var settings by mutableStateOf(TypingSettings())
         private set
+    var changingPc by mutableStateOf(false) // true while the connect screen is open again
+        private set
 
     init {
         val host = prefs.getString("host", null)
@@ -38,6 +52,10 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
         if (host != null && code != null) {
             usePairing(Pairing(host, prefs.getInt("port", Pairing.DEFAULT_PORT), code))
         }
+        connectivity.registerNetworkCallback(
+            NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
+            wifiCallback,
+        )
     }
 
     fun pair(newPairing: Pairing) {
@@ -46,15 +64,16 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
             .putInt("port", newPairing.port)
             .putString("code", newPairing.code)
             .apply()
+        changingPc = false
         usePairing(newPairing)
     }
 
-    fun forget() {
-        prefs.edit().clear().apply()
-        pairing = null
-        client = null
-        status = null
-        problem = null
+    fun startChangingPc() {
+        changingPc = true
+    }
+
+    fun cancelChangingPc() {
+        changingPc = false
     }
 
     fun updateText(value: String) {
@@ -87,7 +106,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
                 problem = UNREACHABLE
                 2_000L
             }
-            delay(wait)
+            withTimeoutOrNull(wait) { wakeUp.receive() }
         }
     }
 
@@ -101,6 +120,10 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
     fun resume() = send { it.resume() }
 
     fun stop() = send { it.stop() }
+
+    override fun onCleared() {
+        connectivity.unregisterNetworkCallback(wifiCallback)
+    }
 
     private fun usePairing(newPairing: Pairing) {
         pairing = newPairing

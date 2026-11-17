@@ -25,6 +25,7 @@ from .keys import CapsMode
 PROTOCOL_VERSION = 1
 DEFAULT_PORT = 8765
 MAX_BODY_BYTES = 256 * 1024
+IDLE_TIMEOUT_S = 30.0  # closes keep-alive sockets the phone has stopped using
 
 _CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to mix up
 _CODE_LENGTH = 8  # 40 bits; brute force is capped by the lockout below
@@ -205,12 +206,20 @@ class RemoteServer:
 
 def _make_handler(remote: RemoteServer) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"  # keep-alive: every reply sets Content-Length
+        disable_nagle_algorithm = True  # send small replies at once (TCP_NODELAY)
+        timeout = IDLE_TIMEOUT_S
+
         def do_GET(self) -> None:
-            self._answer(b"")
+            self._dispatch()
 
         def do_POST(self) -> None:
+            self._dispatch()
+
+        def _dispatch(self) -> None:
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_BODY_BYTES:
+                self.close_connection = True  # the unread body would break the next request
                 self._send(413, {"error": "text is too long"})
                 return
             self._answer(self.rfile.read(length))

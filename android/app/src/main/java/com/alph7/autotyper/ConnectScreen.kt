@@ -32,7 +32,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 
 @Composable
-fun ConnectScreen(onPaired: (Pairing) -> Unit) {
+fun ConnectScreen(onPaired: (Pairing) -> Unit, onBack: (() -> Unit)? = null) {
     var address by rememberSaveable { mutableStateOf("") }
     var code by rememberSaveable { mutableStateOf("") }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -52,6 +52,11 @@ fun ConnectScreen(onPaired: (Pairing) -> Unit) {
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (onBack != null) {
+                OutlinedButton(onClick = onBack, modifier = Modifier.height(44.dp)) {
+                    Text("Back")
+                }
+            }
             Text(
                 "Auto Typer",
                 style = MaterialTheme.typography.headlineSmall,
