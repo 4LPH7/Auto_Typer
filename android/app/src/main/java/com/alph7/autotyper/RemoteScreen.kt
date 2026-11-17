@@ -22,8 +22,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,7 +73,10 @@ fun RemoteScreen(model: RemoteViewModel) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = model::forget) { Text("Pair again") }
+                OutlinedButton(
+                    onClick = model::startChangingPc,
+                    modifier = Modifier.height(44.dp),
+                ) { Text("Change PC") }
             }
             val problem = model.problem
             Text(
@@ -129,6 +132,13 @@ fun RemoteScreen(model: RemoteViewModel) {
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = CASES.size),
                     ) { Text(label) }
                 }
+            }
+
+            SettingSwitch("Paste instead of typing", settings.pasteMode) {
+                model.updateSettings(settings.copy(pasteMode = it))
+            }
+            SettingSwitch("Pause if the window changes", settings.focusGuard) {
+                model.updateSettings(settings.copy(focusGuard = it))
             }
 
             StatusPanel(status)
@@ -192,6 +202,14 @@ private fun Controls(model: RemoteViewModel, status: PcStatus?) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun SettingSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

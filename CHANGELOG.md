@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Phone remote: paste mode and focus guard.** The Android app has switches for both, matching
+  the desktop settings.
+- **Phone remote: "Send to Auto Typer".** Share text from any app to the phone remote.
+- **Phone remote: Back and Change PC.** The phone can open the connect screen again without
+  forgetting the saved PC, and Back returns to the remote.
+
+### Changed
+- **Faster phone remote.** The PC server keeps HTTP connections open between the phone's polls
+  (HTTP/1.1 keep-alive, `TCP_NODELAY`) and closes idle ones after 30 s.
+- **Phone reconnects when Wi-Fi returns.** It polls at once instead of waiting for the next retry.
+- **Phone rejects QR codes from other protocol versions.**
+
 ## 2.2.0 — 2026-11-05
 
 ### Added
